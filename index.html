@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>AI Metadata Generator</title>
 
   <style>
@@ -84,10 +83,25 @@
       font-weight: bold;
     }
 
+    .progress {
+      height: 10px;
+      background: #e5e7eb;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 15px 0 25px;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: #111827;
+      transition: width 0.3s ease;
+    }
+
     .preview-grid {
       display: grid;
-      grid-template-columns:
-        repeat(auto-fill, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
       gap: 15px;
       margin-top: 25px;
     }
@@ -117,10 +131,6 @@
       padding: 22px;
       border-radius: 14px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-    }
-
-    .result-card h2 {
-      margin-top: 0;
     }
 
     .field {
@@ -161,6 +171,7 @@
     .download-area {
       text-align: center;
       margin: 30px 0;
+      display: none;
     }
 
     .error {
@@ -169,6 +180,10 @@
 
     .success {
       color: #166534;
+    }
+
+    .retry {
+      color: #92400e;
     }
   </style>
 </head>
@@ -187,7 +202,7 @@
     <h2>Upload Images</h2>
 
     <p>
-      Select one or more images.
+      Select up to 10 images per batch.
     </p>
 
     <input
@@ -214,24 +229,29 @@
   ></div>
 
   <div
+    id="progress"
+    class="progress"
+  >
+    <div
+      id="progressBar"
+      class="progress-bar"
+    ></div>
+  </div>
+
+  <div
     id="preview"
     class="preview-grid"
   ></div>
 
-  <div
-    id="results"
-  ></div>
+  <div id="results"></div>
 
   <div
     id="downloadArea"
     class="download-area"
-    style="display:none;"
   >
-
     <button onclick="downloadCSV()">
       Download CSV
     </button>
-
   </div>
 
 </div>
@@ -243,8 +263,16 @@ const WORKER_URL =
 
 const MAX_IMAGE_SIZE = 1200;
 
-let allResults = [];
+/*
+  5 concurrent requests.
+  This is intentionally controlled to reduce
+  the chance of hitting Gemini RPM limits.
+*/
+const CONCURRENCY = 5;
 
+const MAX_RETRIES = 4;
+
+let allResults = [];
 
 const imageInput =
   document.getElementById("imageInput");
@@ -257,6 +285,12 @@ const results =
 
 const status =
   document.getElementById("status");
+
+const progress =
+  document.getElementById("progress");
+
+const progressBar =
+  document.getElementById("progressBar");
 
 const generateButton =
   document.getElementById("generateButton");
@@ -275,7 +309,7 @@ function previewImages() {
   preview.innerHTML = "";
 
   const files =
-    imageInput.files;
+    Array.from(imageInput.files);
 
   for (const file of files) {
 
@@ -298,7 +332,6 @@ function previewImages() {
       file.name;
 
     card.appendChild(img);
-
     card.appendChild(name);
 
     preview.appendChild(card);
@@ -309,13 +342,13 @@ function previewImages() {
 
 async function generateMetadata() {
 
-  const files =
-    imageInput.files;
+  let files =
+    Array.from(imageInput.files);
 
   if (!files.length) {
 
     status.textContent =
-      "Please select an image first.";
+      "Please select images first.";
 
     status.className =
       "status error";
@@ -323,31 +356,160 @@ async function generateMetadata() {
     return;
   }
 
-  generateButton.disabled =
-    true;
-
-  results.innerHTML =
-    "";
-
-  allResults =
-    [];
-
-  status.className =
-    "status";
-
-  for (
-    let i = 0;
-    i < files.length;
-    i++
-  ) {
-
-    const file =
-      files[i];
+  /*
+    Keep each run at maximum 10 images.
+  */
+  if (files.length > 10) {
 
     status.textContent =
-      `Analyzing ${i + 1} of ${files.length}: ${file.name}`;
+      "Please select maximum 10 images per batch.";
+
+    status.className =
+      "status error";
+
+    return;
+  }
+
+  generateButton.disabled = true;
+
+  results.innerHTML = "";
+
+  allResults = [];
+
+  progress.style.display = "block";
+
+  progressBar.style.width = "0%";
+
+  let completed = 0;
+
+  /*
+    Process the selected files in groups
+    of CONCURRENCY.
+  */
+  for (
+    let start = 0;
+    start < files.length;
+    start += CONCURRENCY
+  ) {
+
+    const group =
+      files.slice(
+        start,
+        start + CONCURRENCY
+      );
+
+    status.textContent =
+      `Processing ${completed} / ${files.length}...`;
+
+    const groupResults =
+      await Promise.all(
+        group.map(
+          file =>
+            processImageWithRetry(file)
+        )
+      );
+
+    for (
+      const item of groupResults
+    ) {
+
+      completed++;
+
+      if (item.success) {
+
+        allResults.push(
+          item.data
+        );
+
+        showResult(
+          item.data
+        );
+
+      } else {
+
+        showError(
+          item.filename,
+          item.error
+        );
+      }
+
+      const percent =
+        Math.round(
+          completed /
+          files.length *
+          100
+        );
+
+      progressBar.style.width =
+        percent + "%";
+
+      status.textContent =
+        `${completed} / ${files.length} completed`;
+    }
+
+    /*
+      Small pause between groups.
+      This helps avoid bursts.
+    */
+    if (completed < files.length) {
+
+      await sleep(1000);
+    }
+  }
+
+  generateButton.disabled = false;
+
+  if (allResults.length) {
+
+    document.getElementById(
+      "downloadArea"
+    ).style.display = "block";
+
+    status.textContent =
+      `Completed: ${allResults.length} / ${files.length} images`;
+
+    status.className =
+      "status success";
+
+  } else {
+
+    status.textContent =
+      "No image was successfully processed.";
+
+    status.className =
+      "status error";
+  }
+}
+
+
+
+async function processImageWithRetry(file) {
+
+  let lastError =
+    "Unknown error";
+
+  for (
+    let attempt = 0;
+    attempt <= MAX_RETRIES;
+    attempt++
+  ) {
 
     try {
+
+      if (attempt > 0) {
+
+        const delay =
+          Math.min(
+            1500 *
+            Math.pow(2, attempt - 1),
+            12000
+          );
+
+        status.textContent =
+          `${file.name}: retrying in ${Math.round(delay / 1000)}s...`;
+
+        await sleep(delay);
+      }
 
       const image =
         await resizeAndCompress(file);
@@ -372,20 +534,37 @@ async function generateMetadata() {
       const data =
         await response.json();
 
-      if (!data.success) {
+      if (!response.ok || !data.success) {
 
-        throw new Error(
+        const errorMessage =
           data.result?.error?.message ||
           data.result?.error ||
-          "AI request failed"
+          data.error ||
+          "AI request failed";
+
+        /*
+          Retry rate-limit and temporary server errors.
+        */
+        if (
+          response.status === 429 ||
+          response.status >= 500
+        ) {
+
+          lastError =
+            errorMessage;
+
+          continue;
+        }
+
+        throw new Error(
+          errorMessage
         );
       }
 
       const text =
         data.result
           ?.candidates?.[0]
-          ?.content
-          ?.parts?.[0]
+          ?.content?.parts?.[0]
           ?.text;
 
       if (!text) {
@@ -395,80 +574,76 @@ async function generateMetadata() {
         );
       }
 
-      const metadata =
-        JSON.parse(text);
+      let metadata;
 
-      allResults.push({
-        filename: file.name,
-        title: metadata.title || "",
-        description:
-          metadata.description || "",
-        keywords:
-          Array.isArray(metadata.keywords)
-            ? metadata.keywords
-            : [],
-        ai_prompt:
-          metadata.ai_prompt || ""
-      });
+      try {
 
-      showResult(
-        file.name,
-        metadata
-      );
+        metadata =
+          JSON.parse(text);
 
-    } catch (error) {
+      } catch (e) {
 
-      const card =
-        document.createElement("div");
+        throw new Error(
+          "AI returned invalid JSON."
+        );
+      }
 
-      card.className =
-        "result-card";
+      return {
+        success: true,
 
-      card.innerHTML =
-        `
-          <h2>${escapeHTML(file.name)}</h2>
+        data: {
+          filename:
+            file.name,
 
-          <p class="error">
-            Error: ${escapeHTML(error.message)}
-          </p>
-        `;
+          title:
+            metadata.title || "",
 
-      results.appendChild(card);
+          description:
+            metadata.description || "",
+
+          keywords:
+            Array.isArray(metadata.keywords)
+              ? metadata.keywords
+              : [],
+
+          ai_prompt:
+            metadata.ai_prompt || ""
+        }
+      };
+    }
+
+    catch (error) {
+
+      lastError =
+        error.message;
+
+      /*
+        Network errors are retried too.
+      */
+      if (
+        attempt <
+        MAX_RETRIES
+      ) {
+
+        continue;
+      }
     }
   }
 
-  generateButton.disabled =
-    false;
+  return {
+    success: false,
 
-  if (allResults.length) {
+    filename:
+      file.name,
 
-    document.getElementById(
-      "downloadArea"
-    ).style.display =
-      "block";
-
-    status.textContent =
-      `Completed: ${allResults.length} image(s).`;
-
-    status.className =
-      "status success";
-
-  } else {
-
-    status.textContent =
-      "No image was successfully processed.";
-
-    status.className =
-      "status error";
-  }
+    error:
+      lastError
+  };
 }
 
 
 
-function showResult(
-  filename,
-  metadata
-) {
+function showResult(item) {
 
   const card =
     document.createElement("div");
@@ -477,14 +652,14 @@ function showResult(
     "result-card";
 
   const keywords =
-    Array.isArray(metadata.keywords)
-      ? metadata.keywords
+    Array.isArray(item.keywords)
+      ? item.keywords
       : [];
 
   card.innerHTML =
     `
       <h2>
-        ${escapeHTML(filename)}
+        ${escapeHTML(item.filename)}
       </h2>
 
       <div class="field">
@@ -493,18 +668,15 @@ function showResult(
           Title
         </div>
 
-        <div
-          class="field-content"
-          id="title-${allResults.length}"
-        >
-          ${escapeHTML(metadata.title || "")}
+        <div class="field-content">
+          ${escapeHTML(item.title)}
         </div>
 
         <div class="actions">
           <button
             onclick="copyText(
               this,
-              ${JSON.stringify(metadata.title || "")}
+              ${JSON.stringify(item.title)}
             )"
           >
             Copy Title
@@ -513,24 +685,21 @@ function showResult(
 
       </div>
 
-
       <div class="field">
 
         <div class="field-title">
           Description
         </div>
 
-        <div
-          class="field-content"
-        >
-          ${escapeHTML(metadata.description || "")}
+        <div class="field-content">
+          ${escapeHTML(item.description)}
         </div>
 
         <div class="actions">
           <button
             onclick="copyText(
               this,
-              ${JSON.stringify(metadata.description || "")}
+              ${JSON.stringify(item.description)}
             )"
           >
             Copy Description
@@ -538,7 +707,6 @@ function showResult(
         </div>
 
       </div>
-
 
       <div class="field">
 
@@ -558,18 +726,21 @@ function showResult(
         </div>
 
         <div class="actions">
+
           <button
             onclick="copyText(
               this,
-              ${JSON.stringify(keywords.join(", "))}
+              ${JSON.stringify(
+                keywords.join(", ")
+              )}
             )"
           >
             Copy Keywords
           </button>
+
         </div>
 
       </div>
-
 
       <div class="field">
 
@@ -578,21 +749,54 @@ function showResult(
         </div>
 
         <div class="field-content">
-          ${escapeHTML(metadata.ai_prompt || "")}
+          ${escapeHTML(item.ai_prompt)}
         </div>
 
         <div class="actions">
+
           <button
             onclick="copyText(
               this,
-              ${JSON.stringify(metadata.ai_prompt || "")}
+              ${JSON.stringify(item.ai_prompt)}
             )"
           >
             Copy AI Prompt
           </button>
+
         </div>
 
       </div>
+    `;
+
+  results.appendChild(card);
+}
+
+
+
+function showError(
+  filename,
+  error
+) {
+
+  const card =
+    document.createElement("div");
+
+  card.className =
+    "result-card";
+
+  card.innerHTML =
+    `
+      <h2>
+        ${escapeHTML(filename)}
+      </h2>
+
+      <p class="error">
+        Error: ${escapeHTML(error)}
+      </p>
+
+      <p>
+        This image failed after automatic retries.
+      </p>
     `;
 
   results.appendChild(card);
@@ -753,14 +957,13 @@ function downloadCSV() {
     return;
   }
 
-  const header =
-    [
-      "Filename",
-      "Title",
-      "Description",
-      "Keywords",
-      "AI Prompt"
-    ];
+  const header = [
+    "Filename",
+    "Title",
+    "Description",
+    "Keywords",
+    "AI Prompt"
+  ];
 
   const rows =
     allResults.map(item => [
@@ -771,11 +974,10 @@ function downloadCSV() {
       item.ai_prompt
     ]);
 
-  const csvRows =
-    [
-      header,
-      ...rows
-    ];
+  const csvRows = [
+    header,
+    ...rows
+  ];
 
   const csv =
     csvRows
@@ -808,9 +1010,26 @@ function downloadCSV() {
   link.download =
     "ai-metadata.csv";
 
+  document.body.appendChild(link);
+
   link.click();
 
+  document.body.removeChild(link);
+
   URL.revokeObjectURL(url);
+}
+
+
+
+function sleep(ms) {
+
+  return new Promise(
+    resolve =>
+      setTimeout(
+        resolve,
+        ms
+      )
+  );
 }
 
 
