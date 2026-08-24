@@ -1,1 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Metadata Generator</title>
 
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 25px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    header p {
+      color: #d1d5db;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    .upload-box {
+      background: white;
+      border: 2px dashed #9ca3af;
+      border-radius: 15px;
+      padding: 50px 20px;
+      text-align: center;
+    }
+
+    .upload-box h2 {
+      margin-bottom: 10px;
+    }
+
+    .upload-box p {
+      color: #6b7280;
+      margin-bottom: 20px;
+    }
+
+    input[type="file"] {
+      margin: 15px 0;
+    }
+
+    button {
+      background: #111827;
+      color: white;
+      border: none;
+      padding: 12px 22px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    button:hover {
+      background: #374151;
+    }
+
+    #preview {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 20px;
+    }
+
+    .image-card {
+      background: white;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .image-card img {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    .image-card p {
+      margin-top: 8px;
+      font-size: 13px;
+      word-break: break-word;
+    }
+
+    .status {
+      margin-top: 25px;
+      text-align: center;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>AI Metadata Generator</h1>
+    <p>Generate titles, keywords, descriptions and prompts for your images.</p>
+  </header>
+
+  <div class="container">
+
+    <div class="upload-box">
+      <h2>Upload Your Images</h2>
+      <p>You can select multiple images at once.</p>
+
+      <input
+        type="file"
+        id="imageInput"
+        accept="image/*"
+        multiple
+      >
+
+      <br>
+
+      <button onclick="showImages()">
+        Upload Images
+      </button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div id="preview"></div>
+
+  </div>
+
+  <script>
+    function showImages() {
+
+      const input = document.getElementById("imageInput");
+      const preview = document.getElementById("preview");
+      const status = document.getElementById("status");
+
+      preview.innerHTML = "";
+
+      if (input.files.length === 0) {
+        status.textContent = "Please select some images first.";
+        return;
+      }
+
+      status.textContent =
+        input.files.length + " image(s) selected.";
+
+      for (let i = 0; i < input.files.length; i++) {
+
+        const file = input.files[i];
+
+        const card = document.createElement("div");
+        card.className = "image-card";
+
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+
+        const name = document.createElement("p");
+        name.textContent = file.name;
+
+        card.appendChild(img);
+        card.appendChild(name);
+
+        preview.appendChild(card);
+      }
+    }
+  </script>
+
+</body>
+</html>
