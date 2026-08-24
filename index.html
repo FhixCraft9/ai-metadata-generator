@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>AI Metadata Generator</title>
 
   <style>
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -21,12 +23,12 @@
     header {
       background: #111827;
       color: white;
-      padding: 25px;
+      padding: 30px 20px;
       text-align: center;
     }
 
     header h1 {
-      font-size: 30px;
+      font-size: 32px;
       margin-bottom: 8px;
     }
 
@@ -35,16 +37,16 @@
     }
 
     .container {
-      max-width: 1000px;
-      margin: 40px auto;
+      max-width: 1100px;
+      margin: 35px auto;
       padding: 20px;
     }
 
     .upload-box {
       background: white;
       border: 2px dashed #9ca3af;
-      border-radius: 15px;
-      padding: 50px 20px;
+      border-radius: 16px;
+      padding: 45px 20px;
       text-align: center;
     }
 
@@ -58,14 +60,15 @@
     }
 
     input[type="file"] {
-      margin: 15px 0;
+      margin: 20px 0;
+      max-width: 100%;
     }
 
     button {
       background: #111827;
       color: white;
       border: none;
-      padding: 12px 22px;
+      padding: 13px 24px;
       border-radius: 8px;
       cursor: pointer;
       font-size: 15px;
@@ -75,10 +78,24 @@
       background: #374151;
     }
 
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin: 25px 0;
+      text-align: center;
+      font-weight: bold;
+    }
+
     #preview {
       margin-top: 30px;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(
+        auto-fill,
+        minmax(220px, 1fr)
+      );
       gap: 20px;
     }
 
@@ -91,7 +108,7 @@
 
     .image-card img {
       width: 100%;
-      height: 170px;
+      height: 180px;
       object-fit: cover;
       border-radius: 8px;
     }
@@ -102,14 +119,8 @@
       word-break: break-word;
     }
 
-    .status {
-      margin-top: 25px;
-      text-align: center;
-      font-weight: bold;
-    }
-
     #results {
-      margin-top: 30px;
+      margin-top: 35px;
     }
 
     .result-card {
@@ -121,7 +132,7 @@
     }
 
     .result-card h3 {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .result-card pre {
@@ -131,16 +142,32 @@
       padding: 15px;
       border-radius: 8px;
       overflow-x: auto;
+      font-size: 13px;
     }
+
+    .success {
+      color: #166534;
+    }
+
+    .error {
+      color: #b91c1c;
+    }
+
   </style>
 </head>
 
 <body>
 
 <header>
+
   <h1>AI Metadata Generator</h1>
-  <p>Generate AI metadata for your images</p>
+
+  <p>
+    Generate AI-powered metadata for your images
+  </p>
+
 </header>
+
 
 <div class="container">
 
@@ -149,7 +176,7 @@
     <h2>Upload Your Images</h2>
 
     <p>
-      Select one image first for our AI connection test.
+      Select one or more images to generate metadata.
     </p>
 
     <input
@@ -161,149 +188,407 @@
 
     <br>
 
-    <button onclick="analyzeImages()">
+    <button
+      id="generateButton"
+      onclick="analyzeImages()"
+    >
       Generate Metadata
     </button>
 
   </div>
 
-  <div class="status" id="status"></div>
+
+  <div
+    class="status"
+    id="status"
+  ></div>
+
 
   <div id="preview"></div>
+
 
   <div id="results"></div>
 
 </div>
 
+
 <script>
+
 
 const WORKER_URL =
   "https://ai-metadata-api.safil19704.workers.dev/";
 
-async function analyzeImages() {
 
-  const input = document.getElementById("imageInput");
-  const preview = document.getElementById("preview");
-  const results = document.getElementById("results");
-  const status = document.getElementById("status");
+const MAX_IMAGE_SIZE = 1200;
+
+
+const input =
+  document.getElementById("imageInput");
+
+
+const preview =
+  document.getElementById("preview");
+
+
+const results =
+  document.getElementById("results");
+
+
+const status =
+  document.getElementById("status");
+
+
+const generateButton =
+  document.getElementById("generateButton");
+
+
+
+input.addEventListener(
+  "change",
+  previewImages
+);
+
+
+
+function previewImages() {
 
   preview.innerHTML = "";
-  results.innerHTML = "";
 
-  if (input.files.length === 0) {
+  const files = input.files;
 
-    status.textContent = "Please select an image first.";
+  if (!files.length) {
     return;
-
   }
 
-  status.textContent =
-    "Processing " + input.files.length + " image(s)...";
+  for (const file of files) {
 
-  for (let i = 0; i < input.files.length; i++) {
+    const card =
+      document.createElement("div");
 
-    const file = input.files[i];
+    card.className =
+      "image-card";
 
-    const card = document.createElement("div");
-    card.className = "image-card";
 
-    const img = document.createElement("img");
+    const img =
+      document.createElement("img");
 
-    img.src = URL.createObjectURL(file);
+    img.src =
+      URL.createObjectURL(file);
 
-    const name = document.createElement("p");
 
-    name.textContent = file.name;
+    const name =
+      document.createElement("p");
+
+    name.textContent =
+      file.name;
+
 
     card.appendChild(img);
+
     card.appendChild(name);
 
     preview.appendChild(card);
 
+  }
+
+}
+
+
+
+async function analyzeImages() {
+
+  const files =
+    input.files;
+
+
+  if (!files.length) {
+
+    status.textContent =
+      "Please select at least one image.";
+
+    status.className =
+      "status error";
+
+    return;
+
+  }
+
+
+  generateButton.disabled =
+    true;
+
+
+  results.innerHTML =
+    "";
+
+
+  status.textContent =
+    "Preparing images...";
+
+  status.className =
+    "status";
+
+
+  let completed = 0;
+
+
+  for (const file of files) {
+
     try {
 
-      const imageData = await fileToDataURL(file);
+      status.textContent =
+        `Processing ${completed + 1} of ${files.length}: ${file.name}`;
 
-      const response = await fetch(WORKER_URL, {
 
-        method: "POST",
+      const imageData =
+        await resizeAndCompress(file);
 
-        headers: {
-          "Content-Type": "application/json"
-        },
 
-        body: JSON.stringify({
-          image: imageData
-        })
+      const response =
+        await fetch(
+          WORKER_URL,
+          {
+            method: "POST",
 
-      });
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
 
-      const data = await response.json();
+            body: JSON.stringify({
+              image: imageData
+            })
+          }
+        );
 
-      const resultCard =
+
+      const data =
+        await response.json();
+
+
+      const card =
         document.createElement("div");
 
-      resultCard.className = "result-card";
+
+      card.className =
+        "result-card";
+
 
       const title =
         document.createElement("h3");
 
+
       title.textContent =
-        "AI Result: " + file.name;
+        file.name;
+
 
       const result =
         document.createElement("pre");
 
+
       result.textContent =
-        JSON.stringify(data, null, 2);
+        JSON.stringify(
+          data,
+          null,
+          2
+        );
 
-      resultCard.appendChild(title);
-      resultCard.appendChild(result);
 
-      results.appendChild(resultCard);
+      card.appendChild(title);
+
+      card.appendChild(result);
+
+      results.appendChild(card);
+
+
+      completed++;
+
 
     } catch (error) {
 
-      const errorCard =
+      const card =
         document.createElement("div");
 
-      errorCard.className = "result-card";
 
-      errorCard.innerHTML =
-        "<h3>Error: " +
-        file.name +
-        "</h3><p>" +
-        error.message +
-        "</p>";
+      card.className =
+        "result-card";
 
-      results.appendChild(errorCard);
+
+      card.innerHTML =
+        `
+        <h3>${file.name}</h3>
+
+        <p class="error">
+          Error: ${error.message}
+        </p>
+        `;
+
+
+      results.appendChild(card);
+
+      completed++;
 
     }
 
   }
 
+
   status.textContent =
-    "Processing finished.";
+    `Finished: ${completed} image(s) processed.`;
+
+
+  status.className =
+    "status success";
+
+
+  generateButton.disabled =
+    false;
 
 }
 
 
-function fileToDataURL(file) {
 
-  return new Promise((resolve, reject) => {
+function resizeAndCompress(file) {
 
-    const reader = new FileReader();
+  return new Promise(
+    (resolve, reject) => {
 
-    reader.onload = () =>
-      resolve(reader.result);
+      const reader =
+        new FileReader();
 
-    reader.onerror = reject;
 
-    reader.readAsDataURL(file);
+      reader.onload =
+        function(event) {
 
-  });
+          const img =
+            new Image();
+
+
+          img.onload =
+            function() {
+
+              let width =
+                img.width;
+
+
+              let height =
+                img.height;
+
+
+              if (
+                width > MAX_IMAGE_SIZE ||
+                height > MAX_IMAGE_SIZE
+              ) {
+
+                if (
+                  width > height
+                ) {
+
+                  height =
+                    Math.round(
+                      height *
+                      MAX_IMAGE_SIZE /
+                      width
+                    );
+
+                  width =
+                    MAX_IMAGE_SIZE;
+
+                } else {
+
+                  width =
+                    Math.round(
+                      width *
+                      MAX_IMAGE_SIZE /
+                      height
+                    );
+
+                  height =
+                    MAX_IMAGE_SIZE;
+
+                }
+
+              }
+
+
+              const canvas =
+                document.createElement(
+                  "canvas"
+                );
+
+
+              canvas.width =
+                width;
+
+
+              canvas.height =
+                height;
+
+
+              const ctx =
+                canvas.getContext(
+                  "2d"
+                );
+
+
+              ctx.drawImage(
+                img,
+                0,
+                0,
+                width,
+                height
+              );
+
+
+              const compressed =
+                canvas.toDataURL(
+                  "image/jpeg",
+                  0.70
+                );
+
+
+              resolve(compressed);
+
+            };
+
+
+          img.onerror =
+            function() {
+
+              reject(
+                new Error(
+                  "Could not read image."
+                )
+              );
+
+            };
+
+
+          img.src =
+            event.target.result;
+
+        };
+
+
+      reader.onerror =
+        function() {
+
+          reject(
+            new Error(
+              "Could not load file."
+            )
+          );
+
+        };
+
+
+      reader.readAsDataURL(file);
+
+    }
+  );
 
 }
+
 
 </script>
 
